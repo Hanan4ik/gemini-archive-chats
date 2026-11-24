@@ -1,0 +1,23 @@
+{
+"manifest_version": 3,
+"name": "Gemini Archive Hider",
+"version": "0.1.0",
+"description": "Скрывает из списка чатов Google Gemini диалоги, начинающиеся с [\\A\\].",
+"browser_specific_settings": {
+"gecko": {
+"id": "gemini-archive-hider@local.mvp",
+"strict_min_version": "109.0"
+}
+},
+"content_scripts": [
+{
+"matches": [
+"https://gemini.google.com/*"
+],
+"js": [
+"content.js"
+],
+"run_at": "document_idle"
+}
+]
+}
