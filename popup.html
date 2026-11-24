@@ -4,195 +4,74 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Архив Gemini</title>
-  <style>
-    :root {
-      color-scheme: light dark;
-      --bg: #ffffff;
-      --surface: #f4f6f9;
-      --surface-hover: #e8edf5;
-      --text: #1f2937;
-      --muted: #6b7280;
-      --border: #e5e7eb;
-      --accent: #2563eb;
-      --badge-bg: rgba(245, 158, 11, 0.15);
-      --badge-text: #b45309;
-    }
-
-    @media (prefers-color-scheme: dark) {
-      :root {
-        --bg: #1b1c1f;
-        --surface: #26282d;
-        --surface-hover: #32353d;
-        --text: #f3f4f6;
-        --muted: #9ca3af;
-        --border: #374151;
-        --accent: #60a5fa;
-        --badge-bg: rgba(251, 191, 36, 0.16);
-        --badge-text: #fcd34d;
-      }
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    body {
-      margin: 0;
-      width: 340px;
-      min-height: 180px;
-      max-height: 480px;
-      display: flex;
-      flex-direction: column;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-      font-size: 13px;
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--border);
-      gap: 8px;
-    }
-
-    .title-wrap {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 600;
-    }
-
-    .count-badge {
-      padding: 2px 7px;
-      border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 600;
-      background: var(--badge-bg);
-      color: var(--badge-text);
-    }
-
-    .refresh-btn {
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      border-radius: 6px;
-      padding: 4px 8px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: background-color 0.15s ease;
-    }
-
-    .refresh-btn:hover {
-      background: var(--surface-hover);
-    }
-
-    .search-box {
-      padding: 10px 14px 6px;
-    }
-
-    .search-input {
-      width: 100%;
-      padding: 7px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      color: var(--text);
-      font-size: 12.5px;
-      outline: none;
-    }
-
-    .search-input:focus {
-      border-color: var(--accent);
-    }
-
-    main {
-      flex: 1;
-      overflow-y: auto;
-      padding: 6px 10px 12px;
-    }
-
-    .chat-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .chat-item-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-      text-align: left;
-      padding: 9px 10px;
-      border: none;
-      border-radius: 8px;
-      background: transparent;
-      color: var(--text);
-      cursor: pointer;
-      transition: background-color 0.15s ease;
-    }
-
-    .chat-item-btn:hover {
-      background: var(--surface-hover);
-    }
-
-    .chat-title {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 13px;
-      line-height: 1.3;
-    }
-
-    .chat-arrow {
-      flex-shrink: 0;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .status-message {
-      padding: 24px 14px;
-      text-align: center;
-      color: var(--muted);
-      line-height: 1.45;
-    }
-  </style>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
   <header>
     <div class="title-wrap">
-      <h1>Архив Gemini</h1>
+      <svg class="gemini-sparkle" viewBox="0 0 24 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#4285f4" />
+            <stop offset="50%" stop-color="#9b72cb" />
+            <stop offset="100%" stop-color="#d96570" />
+          </linearGradient>
+        </defs>
+        <path
+          fill="url(#geminiGrad)"
+          d="M12 2C12.4 7.2 16.8 11.6 22 12C16.8 12.4 12.4 16.8 12 22C11.6 16.8 7.2 12.4 2 12C7.2 11.6 11.6 7.2 12 2Z"
+        />
+      </svg>
+      <h1>Архив</h1>
       <span id="chat-count" class="count-badge">0</span>
     </div>
-    <button id="refresh-btn" class="refresh-btn" type="button" title="Обновить список">Обновить</button>
+    <button id="refresh-btn" class="refresh-btn" type="button" title="Обновить список" aria-label="Обновить список">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+        <polyline points="21 3 21 9 15 9" />
+      </svg>
+    </button>
   </header>
 
   <div class="search-box" id="search-box" hidden>
-    <input
-      id="search-input"
-      class="search-input"
-      type="search"
-      placeholder="Поиск по архиву..."
-      autocomplete="off"
-    />
+    <div class="search-field">
+      <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="8" />
+        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input
+        id="search-input"
+        class="search-input"
+        type="search"
+        placeholder="Поиск в архиве"
+        autocomplete="off"
+      />
+    </div>
   </div>
 
-  <main>
+  <main id="chat-list-container">
     <div id="status-message" class="status-message">Загрузка архивных чатов…</div>
     <ul id="chat-list" class="chat-list" hidden></ul>
   </main>
+
+  <!-- Контекстное диалоговое окно действий по ПКМ -->
+  <div id="context-menu" class="context-menu" role="menu" aria-label="Действия с чатом" hidden>
+    <div id="context-menu-title" class="context-menu-title"></div>
+    <button id="ctx-open-chat" class="context-menu-item" type="button" role="menuitem">
+      <svg class="context-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+      <span>Открыть чат</span>
+    </button>
+    <button id="ctx-open-new-tab" class="context-menu-item" type="button" role="menuitem">
+      <svg class="context-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+        <polyline points="15 3 21 3 21 9" />
+        <line x1="10" y1="14" x2="21" y2="3" />
+      </svg>
+      <span>Открыть в новой вкладке</span>
+    </button>
+  </div>
 
   <script src="popup.js"></script>
 </body>

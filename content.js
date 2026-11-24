@@ -1,30 +1,27 @@
 /**
- * Gemini Archive Hider (MVP)
- * Скрывает элементы <gem-nav-list-item>, название которых начинается с заданного префикса архива.
+ * Gemini Archive Hider
+ * Скрывает элементы <gem-nav-list-item>, название которых начинается с заданного префикса архива,
+ * отдаёт список в popup и отображает плашку «Архивный чат» для открытого архивного чата.
  */
 
 (() => {
   'use strict';
 
-  // Префикс архивного чата.
-  // В JavaScript обратный слэш экранируется, поэтому '[\\A\\]' соответствует строке [\A\].
-  // Если в будущем решите использовать просто [A], замените значение на '[A]'.
+  // Префикс архивного чата (экранированный [\A\])
   const ARCHIVE_PREFIX = '[\\A\\]';
 
   // Селектор элементов списка навигации в Gemini
   const ITEM_SELECTOR = 'gem-nav-list-item';
 
-  // Регулярное выражение для класса чатов Angular (ng-tns-c{10 цифр}-9).
-  // По умолчанию строгая проверка отключена, чтобы расширение не сломалось,
-  // если Google пересоберёт фронтенд и индекс -9 изменится.
+  // Опциональная строгая проверка класса Angular (ng-tns-c{10 цифр}-9)
   const STRICT_ANGULAR_CLASS_CHECK = false;
   const CHAT_CLASS_REGEX = /^ng-tns-c\d{10}-9$/;
 
-  // Дата-атрибут для отслеживания скрытых нами элементов (важно при переиспользовании DOM в Angular)
+  // Дата-атрибуты для отслеживания скрытых элементов
   const HIDDEN_ATTR = 'data-gemini-archive-hidden';
   const ARCHIVE_ID_ATTR = 'data-gemini-archive-id';
 
-  // Селектор целевого элемента в правом верхнем углу, слева от которого выводится метка
+  // Селектор целевого элемента в правом верхнем углу
   const RIPPLE_SELECTOR = 'span.mat-mdc-button-persistent-ripple.mdc-icon-button__ripple';
   const BADGE_ID = 'gemini-archive-status-badge';
 
@@ -50,13 +47,38 @@
   }
 
   /**
-   * Извлекает ссылку на чат, если внутри элемента есть <a>.
+   * Извлекает полный URL чата из ссылки <a> или резервно из атрибута jslog.
    * @param {Element} item
    * @returns {string | null}
    */
   function extractChatHref(item) {
-    const link = item.matches('a[href]') ? item : item.querySelector('a[href]');
-    return link ? link.getAttribute('href') : null;
+    const link =
+      (item.matches('a[href]') && item) ||
+      item.querySelector('a[href]') ||
+      item.closest('a[href]');
+
+    if (link) {
+      const rawHref = link.getAttribute('href');
+      if (rawHref) {
+        try {
+          return new URL(rawHref, window.location.origin).href;
+        } catch (_err) {
+          return rawHref;
+        }
+      }
+    }
+
+    // Резервный поиск идентификатора чата (c_<hex>) в атрибуте jslog, если <a> отсутствует
+    const jslogHost = item.hasAttribute('jslog') ? item : item.querySelector('[jslog]');
+    const jslog = jslogHost ? jslogHost.getAttribute('jslog') : '';
+    const match = jslog && jslog.match(/c_([a-zA-Z0-9_-]{8,})/);
+    if (match && match[1]) {
+      const accountPrefixMatch = window.location.pathname.match(/^(\/u\/\d+)\//);
+      const accountPrefix = accountPrefixMatch ? accountPrefixMatch[1] : '';
+      return `${window.location.origin}${accountPrefix}/app/${match[1]}`;
+    }
+
+    return null;
   }
 
   /**
@@ -106,7 +128,7 @@
           return true;
         }
       } catch (_err) {
-        // Игнорируем некорректные относительные URL
+        // Игнорируем некорректные URL
       }
     }
 
@@ -160,7 +182,6 @@
     let bestScore = -Infinity;
 
     ripples.forEach((ripple) => {
-      // Выбираем родительскую кнопку (если есть), чтобы надпись не обрезалась границами круглой icon-button
       const anchor = ripple.closest('button') || ripple;
       const rect = anchor.getBoundingClientRect();
 
@@ -179,7 +200,25 @@
   }
 
   /**
-   * Создаёт или обновляет плашку «Архивный чат» слева от элемента в правом верхнем углу.
+   * Определяет, используется ли сейчас тёмная тема на странице Gemini.
+   * @returns {boolean}
+   */
+  function isDarkThemeActive() {
+    if (document.body) {
+      if (document.body.classList.contains('dark-theme')) return true;
+      if (document.body.classList.contains('light-theme')) return false;
+      const bg = window.getComputedStyle(document.body).backgroundColor;
+      const rgb = bg.match(/\d+/g);
+      if (rgb && rgb.length >= 3) {
+        const luminance = 0.299 * Number(rgb[0]) + 0.587 * Number(rgb[1]) + 0.114 * Number(rgb[2]);
+        return luminance < 128;
+      }
+    }
+    return Boolean(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  }
+
+  /**
+   * Создаёт или обновляет независимую плашку «Архивный чат» поверх страницы.
    * @param {boolean} visible
    */
   function renderArchiveBadge(visible) {
@@ -193,59 +232,58 @@
     }
 
     if (!badge) {
-      badge = document.createElement('span');
+      badge = document.createElement('div');
       badge.id = BADGE_ID;
+      badge.setAttribute('role', 'status');
       badge.textContent = 'Архивный чат';
       Object.assign(badge.style, {
+        position: 'fixed',
+        zIndex: '2147483640',
         display: 'inline-flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: '6px 12px',
-        marginRight: '10px',
+        gap: '6px',
+        height: '32px',
+        padding: '0 14px',
         borderRadius: '9999px',
-        fontSize: '12px',
+        fontSize: '13px',
         fontWeight: '500',
         lineHeight: '1',
         letterSpacing: '0.01em',
         whiteSpace: 'nowrap',
         userSelect: 'none',
         pointerEvents: 'none',
-        flexShrink: '0',
-        fontFamily: "'Google Sans', Roboto, Arial, sans-serif",
-        backgroundColor: 'rgba(245, 158, 11, 0.16)',
-        color: '#b45309',
-        border: '1px solid rgba(245, 158, 11, 0.42)',
+        fontFamily: "'Google Sans', 'Segoe UI', Roboto, Arial, sans-serif",
         boxSizing: 'border-box',
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.16)',
+        transition: 'top 0.15s ease, right 0.15s ease',
       });
+    }
 
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        badge.style.backgroundColor = 'rgba(251, 191, 36, 0.16)';
-        badge.style.color = '#fcd34d';
-        badge.style.borderColor = 'rgba(251, 191, 36, 0.4)';
-      }
+    if (isDarkThemeActive()) {
+      badge.style.backgroundColor = '#282a2c';
+      badge.style.color = '#c2e7ff';
+      badge.style.border = '1px solid rgba(168, 199, 250, 0.32)';
+    } else {
+      badge.style.backgroundColor = '#e9eef6';
+      badge.style.color = '#041e49';
+      badge.style.border = '1px solid rgba(11, 87, 208, 0.24)';
+    }
+
+    if (document.body && badge.parentElement !== document.body) {
+      document.body.appendChild(badge);
     }
 
     const anchor = findTopRightBadgeAnchor();
-    if (anchor && anchor.parentElement) {
-      // Сбрасываем резервное фиксированное позиционирование, если ранее оно применялось
-      badge.style.position = '';
-      badge.style.top = '';
-      badge.style.right = '';
-      badge.style.zIndex = '';
-
-      if (badge.parentElement !== anchor.parentElement || badge.nextElementSibling !== anchor) {
-        anchor.parentElement.insertBefore(badge, anchor);
-      }
-    } else if (document.body) {
-      // Резервное размещение в правом верхнем углу, пока кнопка шапки не отрендерилась
-      badge.style.position = 'fixed';
-      badge.style.top = '14px';
-      badge.style.right = '72px';
-      badge.style.zIndex = '9999';
-
-      if (badge.parentElement !== document.body) {
-        document.body.appendChild(badge);
-      }
+    if (anchor) {
+      const rect = anchor.getBoundingClientRect();
+      const topPos = Math.max(8, Math.round(rect.top + (rect.height - 32) / 2));
+      const rightPos = Math.max(16, Math.round(window.innerWidth - rect.left + 12));
+      badge.style.top = `${topPos}px`;
+      badge.style.right = `${rightPos}px`;
+    } else {
+      badge.style.top = '16px';
+      badge.style.right = '112px';
     }
   }
 
@@ -257,7 +295,6 @@
       const currentUrl = window.location.href;
       if (currentUrl !== lastKnownUrl) {
         lastKnownUrl = currentUrl;
-        // Если переход произошёл не в момент клика по архиву, сбрасываем ручную сессию
         if (manualArchiveSession && Date.now() - manualArchiveSession.openedAt > 2500) {
           manualArchiveSession = null;
         }
@@ -265,7 +302,6 @@
 
       let isArchivedOpen = false;
 
-      // 1. Проверяем, совпадает ли открытый чат с одним из скрытых архивных элементов
       const archivedItems = document.querySelectorAll(`${ITEM_SELECTOR}[${HIDDEN_ATTR}="true"]`);
       for (const item of archivedItems) {
         if (isItemCurrentlyActive(item)) {
@@ -274,12 +310,10 @@
         }
       }
 
-      // 2. Проверяем заголовок вкладки на случай, если список чатов ещё не прогружен
       if (!isArchivedOpen && document.title.trim().startsWith(ARCHIVE_PREFIX)) {
         isArchivedOpen = true;
       }
 
-      // 3. Учитываем только что открытый через popup архивный чат (пока Angular обновляет DOM)
       if (!isArchivedOpen && manualArchiveSession) {
         const withinGracePeriod = Date.now() - manualArchiveSession.openedAt <= 2500;
         const matchesSessionUrl =
@@ -382,7 +416,6 @@
           item.style.setProperty('display', 'none', 'important');
           item.setAttribute(HIDDEN_ATTR, 'true');
         } else if (!shouldHide && isAlreadyHidden) {
-          // Возвращаем отображение, если чат переименовали или Angular переиспользовал DOM-узел
           item.style.removeProperty('display');
           item.removeAttribute(HIDDEN_ATTR);
           item.removeAttribute(ARCHIVE_ID_ATTR);
@@ -395,7 +428,6 @@
     }
   }
 
-  // Группируем частые мутации DOM через requestAnimationFrame для минимальной нагрузки
   let rafScheduled = false;
   function scheduleProcess() {
     if (rafScheduled) return;
@@ -407,12 +439,11 @@
   }
 
   /**
-   * Инициализация наблюдателя за DOM (так как Gemini — это SPA с динамической подгрузкой списка).
+   * Инициализация наблюдателя за DOM и обработчика сообщений от popup.
    */
   function init() {
     processChatList();
 
-    // Подписываемся на сообщения из выпадающей панели (popup)
     if (runtimeApi?.runtime?.onMessage) {
       runtimeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (!message || typeof message !== 'object') return false;
@@ -432,15 +463,12 @@
       });
     }
 
-    // Отслеживаем смену истории браузера (кнопки Назад/Вперёд в SPA)
     window.addEventListener('popstate', scheduleProcess);
+    window.addEventListener('resize', syncArchiveBadge);
 
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (
-          mutation.type === 'childList' ||
-          mutation.type === 'characterData'
-        ) {
+        if (mutation.type === 'childList' || mutation.type === 'characterData') {
           scheduleProcess();
           break;
         }
