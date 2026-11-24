@@ -1,7 +1,8 @@
 /**
  * Gemini Archive Hider
  * Скрывает элементы <gem-nav-list-item>, название которых начинается с заданного префикса архива,
- * отдаёт список в popup и отображает плашку «Архивный чат» для открытого архивного чата.
+ * добавляет кнопку «Архивировать» в меню «трёх точек» чата, отдаёт список в popup
+ * и отображает плашку «Архивный чат» для открытого архивного чата.
  */
 
 (() => {
@@ -17,9 +18,10 @@
   const STRICT_ANGULAR_CLASS_CHECK = false;
   const CHAT_CLASS_REGEX = /^ng-tns-c\d{10}-9$/;
 
-  // Дата-атрибуты для отслеживания скрытых элементов
+  // Дата-атрибуты для отслеживания скрытых элементов и внедрённых кнопок
   const HIDDEN_ATTR = 'data-gemini-archive-hidden';
   const ARCHIVE_ID_ATTR = 'data-gemini-archive-id';
+  const MENU_ARCHIVE_BTN_ATTR = 'data-gemini-archive-menu-btn';
 
   // Селектор целевого элемента в правом верхнем углу
   const RIPPLE_SELECTOR = 'span.mat-mdc-button-persistent-ripple.mdc-icon-button__ripple';
@@ -30,146 +32,467 @@
   let archiveIdCounter = 0;
   let lastKnownUrl = window.location.href;
   let manualArchiveSession = null;
+  let isArchivingInProgress = false;
 
   /**
-   * Возвращает или назначает уникальный идентификатор архивному элементу.
-   * @param {Element} item
-   * @returns {string}
+   * Ожидает выполнения условия predicate с заданным интервалом и таймаутом.
+   * @template T
+   * @param {() => T | null | undefined | false} predicate
+   * @param {number} [timeoutMs=3000]
+   * @param {number} [intervalMs=50]
+   * @returns {Promise<T | null>}
    */
-  function ensureArchiveId(item) {
-    let id = item.getAttribute(ARCHIVE_ID_ATTR);
-    if (!id) {
-      archiveIdCounter += 1;
-      id = `arch-${archiveIdCounter}`;
-      item.setAttribute(ARCHIVE_ID_ATTR, id);
-    }
-    return id;
+  function waitForCondition(predicate, timeoutMs = 3000, intervalMs = 50) {
+    return new Promise((resolve) => {
+      const immediate = predicate();
+      if (immediate) {
+        resolve(immediate);
+        return;
+      }
+
+      const deadline = Date.now() + timeoutMs;
+      const timer = window.setInterval(() => {
+        const result = predicate();
+        if (result) {
+          window.clearInterval(timer);
+          resolve(result);
+          return;
+        }
+        if (Date.now() >= deadline) {
+          window.clearInterval(timer);
+          resolve(null);
+        }
+      }, intervalMs);
+    });
   }
 
   /**
-   * Извлекает полный URL чата из ссылки <a> или резервно из атрибута jslog.
-   * @param {Element} item
+   * Проверяет, является ли элемент целевым пунктом списка чатов Gemini.
+   * @param {Element} el
+   * @returns {boolean}
+   */
+  function isTargetChatElement(el) {
+    if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+    if (!STRICT_ANGULAR_CLASS_CHECK) return true;
+
+    return Array.from(el.classList).some((cls) => CHAT_CLASS_REGEX.test(cls));
+  }
+
+  /**
+   * Извлекает чистое название чата из элемента, игнорируя текстовые лигатуры иконок.
+   * @param {Element} el
+   * @returns {string}
+   */
+  function extractChatTitle(el) {
+    if (!el) return '';
+
+    const clone = el.cloneNode(true);
+    clone
+      .querySelectorAll(
+        'mat-icon, gem-icon, svg, [aria-hidden="true"], .mat-icon, .font-icon, .mat-mdc-menu-trigger, button[aria-haspopup="menu"]'
+      )
+      .forEach((node) => node.remove());
+
+    const text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    if (text) return text;
+
+    const ariaLabel =
+      el.getAttribute('aria-label') ||
+      el.querySelector('[aria-label]')?.getAttribute('aria-label') ||
+      '';
+    return ariaLabel.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Извлекает полную ссылку на чат из тега <a> или (резервно) из атрибута jslog.
+   * @param {Element} el
    * @returns {string | null}
    */
-  function extractChatHref(item) {
-    const link =
-      (item.matches('a[href]') && item) ||
-      item.querySelector('a[href]') ||
-      item.closest('a[href]');
+  function extractChatHref(el) {
+    if (!el) return null;
 
-    if (link) {
-      const rawHref = link.getAttribute('href');
+    const anchor = el.querySelector('a[href]') || el.closest('a[href]');
+    if (anchor) {
+      const rawHref = anchor.getAttribute('href');
       if (rawHref) {
         try {
           return new URL(rawHref, window.location.origin).href;
         } catch (_err) {
-          return rawHref;
+          return null;
         }
       }
     }
 
-    // Резервный поиск идентификатора чата (c_<hex>) в атрибуте jslog, если <a> отсутствует
-    const jslogHost = item.hasAttribute('jslog') ? item : item.querySelector('[jslog]');
-    const jslog = jslogHost ? jslogHost.getAttribute('jslog') : '';
-    const match = jslog && jslog.match(/c_([a-zA-Z0-9_-]{8,})/);
-    if (match && match[1]) {
-      const accountPrefixMatch = window.location.pathname.match(/^(\/u\/\d+)\//);
-      const accountPrefix = accountPrefixMatch ? accountPrefixMatch[1] : '';
-      return `${window.location.origin}${accountPrefix}/app/${match[1]}`;
+    // Резервное извлечение ID чата (c_...) из jslog, если в разметке нет тега <a>
+    const jslogElements = [el, ...el.querySelectorAll('[jslog]')];
+    for (const node of jslogElements) {
+      const jslog = node.getAttribute('jslog') || '';
+      const match = jslog.match(/c_([a-f0-9]{8,})/i);
+      if (match) {
+        const userPrefixMatch = window.location.pathname.match(/^\/u\/\d+/);
+        const userPrefix = userPrefixMatch ? userPrefixMatch[0] : '';
+        return `${window.location.origin}${userPrefix}/app/${match[1]}`;
+      }
     }
 
     return null;
   }
 
   /**
-   * Проверяет, является ли элемент целевым чатом.
-   * @param {Element} item
-   * @returns {boolean}
-   */
-  function isTargetChatElement(item) {
-    if (!STRICT_ANGULAR_CLASS_CHECK) {
-      return true;
-    }
-    return Array.from(item.classList).some((cls) => CHAT_CLASS_REGEX.test(cls));
-  }
-
-  /**
-   * Извлекает очищенное название чата, игнорируя текстовые лигатуры иконок Angular Material.
-   * @param {Element} item
+   * Назначает или возвращает внутренний идентификатор скрытого архивного чата.
+   * @param {Element} el
    * @returns {string}
    */
-  function extractChatTitle(item) {
-    const clone = item.cloneNode(true);
-    clone
-      .querySelectorAll(
-        'mat-icon, font-icon, .mat-icon, .material-icons, .material-symbols-outlined, .google-symbols, svg, script, style'
-      )
-      .forEach((el) => el.remove());
-
-    const text = (clone.textContent || '').replace(/\s+/g, ' ').trim();
-    if (text) {
-      return text;
+  function ensureArchiveId(el) {
+    let id = el.getAttribute(ARCHIVE_ID_ATTR);
+    if (!id) {
+      archiveIdCounter += 1;
+      id = `gemini-arch-${archiveIdCounter}`;
+      el.setAttribute(ARCHIVE_ID_ATTR, id);
     }
-
-    return (item.getAttribute('aria-label') || item.textContent || '').replace(/\s+/g, ' ').trim();
+    return id;
   }
 
   /**
-   * Проверяет, является ли элемент <gem-nav-list-item> текущим открытым чатом.
-   * @param {Element} item
+   * Проверяет, является ли указанный элемент списка текущим открытым чатом.
+   * @param {Element} el
    * @returns {boolean}
    */
-  function isItemCurrentlyActive(item) {
-    const href = extractChatHref(item);
-    if (href) {
-      try {
-        const itemPath = new URL(href, window.location.origin).pathname;
-        if (itemPath && itemPath !== '/app' && itemPath === window.location.pathname) {
-          return true;
-        }
-      } catch (_err) {
-        // Игнорируем некорректные URL
-      }
-    }
+  function isItemCurrentlyActive(el) {
+    if (!el) return false;
 
     if (
-      item.getAttribute('aria-current') === 'page' ||
-      item.classList.contains('selected') ||
-      item.classList.contains('active') ||
-      item.classList.contains('is-active') ||
-      item.classList.contains('mdc-list-item--activated')
+      el.getAttribute('aria-current') === 'page' ||
+      el.getAttribute('aria-selected') === 'true' ||
+      el.querySelector('[aria-current="page"], [aria-selected="true"]')
     ) {
       return true;
     }
 
-    return Boolean(
-      item.querySelector(
-        '[aria-current="page"], .selected, .active, .is-active, .mdc-list-item--activated'
-      )
-    );
+    const activeSelectors =
+      '.selected, .active, .is-active, .mat-mdc-list-item-active, .mdc-list-item--activated';
+    if (el.matches(activeSelectors) || el.querySelector(activeSelectors)) {
+      return true;
+    }
+
+    const href = extractChatHref(el);
+    if (href) {
+      try {
+        const itemPath = new URL(href, window.location.origin).pathname;
+        if (itemPath && itemPath !== '/' && window.location.pathname === itemPath) {
+          return true;
+        }
+      } catch (_err) {
+        // Игнорируем некорректный URL
+      }
+    }
+
+    return false;
   }
 
   /**
-   * Собирает актуальный список всех архивных чатов из DOM.
+   * Собирает список всех скрытых архивных чатов для передачи в popup.
    * @returns {Array<{id: string, title: string, displayTitle: string, href: string | null}>}
    */
   function collectArchivedChats() {
     processChatList();
-    const chats = [];
+
     const items = document.querySelectorAll(`${ITEM_SELECTOR}[${HIDDEN_ATTR}="true"]`);
+    const chats = [];
 
     items.forEach((item) => {
-      const title = extractChatTitle(item);
-      if (!title.startsWith(ARCHIVE_PREFIX)) return;
-
       const id = ensureArchiveId(item);
-      const displayTitle = title.slice(ARCHIVE_PREFIX.length).trim() || title;
-      const href = extractChatHref(item);
+      const title = extractChatTitle(item);
+      const displayTitle = title.startsWith(ARCHIVE_PREFIX)
+        ? title.slice(ARCHIVE_PREFIX.length).trim() || title
+        : title;
 
-      chats.push({ id, title, displayTitle, href });
+      chats.push({
+        id,
+        title,
+        displayTitle,
+        href: extractChatHref(item),
+      });
     });
 
     return chats;
+  }
+
+  /**
+   * Находит кнопку «Переименовать» внутри открытого меню «трёх точек»
+   * по data-test-id или атрибуту иконки (без привязки к текстовому label).
+   * @param {Element} menuContainer
+   * @returns {HTMLElement | null}
+   */
+  function findRenameMenuButton(menuContainer) {
+    const byTestId = menuContainer.querySelector(
+      'button[data-test-id="rename-button"], [data-test-id="rename-button"]'
+    );
+    if (byTestId && !byTestId.hasAttribute(MENU_ARCHIVE_BTN_ATTR)) {
+      return byTestId;
+    }
+
+    const menuItems = menuContainer.querySelectorAll(
+      'button[mat-menu-item], button.mat-mdc-menu-item, [role="menuitem"]'
+    );
+
+    for (const btn of menuItems) {
+      if (btn.hasAttribute(MENU_ARCHIVE_BTN_ATTR)) continue;
+
+      const editIcon = btn.querySelector(
+        '[fonticon="edit"], [data-mat-icon-name="edit"], gem-icon[fonticonname="edit"]'
+      );
+      if (editIcon) {
+        return btn;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Создаёт кнопку «Архивировать» путём клонирования нативной кнопки «Переименовать»,
+   * сохраняя все scoped-атрибуты Angular (_ngcontent-*) и стили меню Gemini.
+   * @param {HTMLElement} renameBtn
+   * @returns {HTMLElement}
+   */
+  function createArchiveMenuButton(renameBtn) {
+    const btn = renameBtn.cloneNode(true);
+    btn.setAttribute(MENU_ARCHIVE_BTN_ATTR, 'true');
+    btn.setAttribute('data-test-id', 'archive-button');
+    btn.removeAttribute('jslog');
+    btn.classList.remove(
+      'cdk-focused',
+      'cdk-program-focused',
+      'cdk-mouse-focused',
+      'cdk-keyboard-focused'
+    );
+
+    // Обновляем иконку на schedule (lumi-symbols)
+    const gemIcon = btn.querySelector('gem-icon');
+    if (gemIcon) {
+      gemIcon.setAttribute('fonticonname', 'schedule');
+    }
+
+    const matIcon = btn.querySelector('mat-icon');
+    if (matIcon) {
+      matIcon.setAttribute('fonticon', 'schedule');
+      matIcon.setAttribute('data-mat-icon-name', 'schedule');
+      matIcon.setAttribute('data-mat-icon-namespace', 'lumi-symbols');
+      matIcon.textContent = '';
+    }
+
+    // Обновляем текст пункта меню
+    const labelEl = btn.querySelector('.gem-menu-item-label');
+    if (labelEl) {
+      labelEl.textContent = ' Архивировать ';
+    } else {
+      const textWrap = btn.querySelector('.mat-mdc-menu-item-text');
+      if (textWrap) {
+        const span = document.createElement('span');
+        span.className = 'gds-body-m gem-menu-item-label';
+        span.textContent = ' Архивировать ';
+        textWrap.appendChild(span);
+      }
+    }
+
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      automateChatArchiving(renameBtn);
+    });
+
+    return btn;
+  }
+
+  /**
+   * Внедряет кнопку «Архивировать» строго после кнопки «Переименовать»
+   * и удаляет устаревший дубликат, если Angular переиспользовал контейнер меню.
+   */
+  function injectArchiveMenuButtons() {
+    const menus = document.querySelectorAll('.mat-mdc-menu-content, [role="menu"]');
+
+    menus.forEach((menu) => {
+      const renameBtn = findRenameMenuButton(menu);
+      const existingBtn = menu.querySelector(`[${MENU_ARCHIVE_BTN_ATTR}="true"]`);
+
+      if (!renameBtn) {
+        if (existingBtn) {
+          existingBtn.remove();
+        }
+        return;
+      }
+
+      // Если кнопка уже стоит сразу после renameBtn — ничего не меняем
+      if (existingBtn && renameBtn.nextElementSibling === existingBtn) {
+        return;
+      }
+
+      if (existingBtn) {
+        existingBtn.remove();
+      }
+
+      const archiveBtn = createArchiveMenuButton(renameBtn);
+      renameBtn.insertAdjacentElement('afterend', archiveBtn);
+    });
+  }
+
+  /**
+   * Проверяет, что кнопка видима и активна (не disabled и не aria-disabled).
+   * @param {Element | null} btn
+   * @returns {btn is HTMLButtonElement}
+   */
+  function isActionButtonEnabled(btn) {
+    return (
+      btn instanceof HTMLButtonElement &&
+      !btn.disabled &&
+      btn.getAttribute('aria-disabled') !== 'true' &&
+      btn.offsetParent !== null
+    );
+  }
+
+  /**
+   * Проверяет, является ли кнопка кнопкой отмены/закрытия диалога.
+   * @param {Element} btn
+   * @returns {boolean}
+   */
+  function isCancelDialogButton(btn) {
+    const testId = (btn.getAttribute('data-test-id') || '').toLowerCase();
+    return (
+      btn.hasAttribute('mat-dialog-close') ||
+      testId === 'cancel-button' ||
+      testId === 'close-button'
+    );
+  }
+
+  /**
+   * Находит активную кнопку подтверждения в диалоге переименования,
+   * гарантированно исключая кнопку отмены.
+   * @param {Element} dialog
+   * @returns {HTMLButtonElement | null}
+   */
+  function findRenameConfirmButton(dialog) {
+    const explicitCandidates = dialog.querySelectorAll(
+      'button[data-test-id="save-button"], button[data-test-id="confirm-button"], button[data-test-id="rename-button"], button[type="submit"]'
+    );
+    for (const btn of explicitCandidates) {
+      if (isActionButtonEnabled(btn) && !isCancelDialogButton(btn)) {
+        return btn;
+      }
+    }
+
+    // Берём последнюю кнопку в блоке действий только если их >= 2 (Отмена + Подтвердить)
+    const actionButtons = Array.from(
+      dialog.querySelectorAll('mat-dialog-actions button, .mat-mdc-dialog-actions button')
+    );
+
+    if (actionButtons.length >= 2) {
+      const confirmCandidate = actionButtons[actionButtons.length - 1];
+      if (isActionButtonEnabled(confirmCandidate) && !isCancelDialogButton(confirmCandidate)) {
+        return confirmCandidate;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Устанавливает значение input/textarea так, чтобы его подхватили Angular FormControl / ngModel.
+   * @param {HTMLInputElement | HTMLTextAreaElement} input
+   * @param {string} value
+   */
+  function setAngularInputValue(input, value) {
+    const proto =
+      input instanceof HTMLTextAreaElement
+        ? window.HTMLTextAreaElement.prototype
+        : window.HTMLInputElement.prototype;
+    const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+
+    input.focus();
+    if (nativeSetter) {
+      nativeSetter.call(input, value);
+    } else {
+      input.value = value;
+    }
+
+    if (typeof InputEvent === 'function') {
+      input.dispatchEvent(
+        new InputEvent('input', {
+          bubbles: true,
+          cancelable: true,
+          data: value,
+          inputType: 'insertText',
+        })
+      );
+    } else {
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+  }
+
+  /**
+   * Автоматизирует архивацию: открывает штатный диалог переименования,
+   * дожидается загрузки текущего названия, добавляет префикс [\A\] и подтверждает сохранение.
+   * @param {HTMLElement} renameBtn
+   */
+  async function automateChatArchiving(renameBtn) {
+    if (isArchivingInProgress) return;
+    isArchivingInProgress = true;
+
+    try {
+      // Открываем штатное окно переименования Gemini
+      renameBtn.click();
+
+      // Ждём появления диалогового окна и поля ввода названия
+      const dialogContext = await waitForCondition(() => {
+        const dialogs = document.querySelectorAll(
+          'mat-dialog-container, .mat-mdc-dialog-container, [role="dialog"]'
+        );
+        for (const dialog of dialogs) {
+          const input = dialog.querySelector('input[type="text"], input:not([type]), textarea');
+          if (input && input.offsetParent !== null) {
+            return { dialog, input };
+          }
+        }
+        return null;
+      }, 3000);
+
+      if (!dialogContext) {
+        console.warn('[Gemini Archive Hider] Не удалось найти диалог переименования.');
+        return;
+      }
+
+      const { dialog, input } = dialogContext;
+
+      // Даём Angular заполнить исходное название чата в поле ввода
+      await waitForCondition(() => ((input.value || '').trim().length > 0 ? true : null), 600);
+
+      const currentTitle = (input.value || '').trim();
+      if (!currentTitle.startsWith(ARCHIVE_PREFIX)) {
+        const archivedTitle = currentTitle
+          ? `${ARCHIVE_PREFIX} ${currentTitle}`
+          : ARCHIVE_PREFIX;
+        setAngularInputValue(input, archivedTitle);
+      }
+
+      // Ждём тик рендера, чтобы Angular обновил состояние формы и разблокировал кнопку сохранения
+      await new Promise((resolve) => window.requestAnimationFrame(resolve));
+
+      const confirmBtn = await waitForCondition(() => findRenameConfirmButton(dialog), 2000);
+      if (confirmBtn) {
+        confirmBtn.click();
+      } else {
+        input.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true })
+        );
+      }
+    } catch (error) {
+      console.error('[Gemini Archive Hider] Ошибка при автоматической архивации чата:', error);
+    } finally {
+      isArchivingInProgress = false;
+    }
   }
 
   /**
@@ -393,7 +716,7 @@
   }
 
   /**
-   * Сканирует список элементов <gem-nav-list-item> и скрывает/показывает их в зависимости от префикса.
+   * Сканирует список элементов <gem-nav-list-item>, скрывает/показывает их и обновляет меню чатов.
    */
   function processChatList() {
     try {
@@ -422,6 +745,7 @@
         }
       });
 
+      injectArchiveMenuButtons();
       syncArchiveBadge();
     } catch (error) {
       console.error('[Gemini Archive Hider] Ошибка при обработке списка чатов:', error);
