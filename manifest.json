@@ -1,13 +1,20 @@
 {
 "manifest_version": 3,
 "name": "Gemini Archive Hider",
-"version": "0.1.0",
-"description": "Скрывает из списка чатов Google Gemini диалоги, начинающиеся с [\\A\\].",
+"version": "0.2.0",
+"description": "Скрывает архивные чаты [\\A\\] в Google Gemini и позволяет открывать их через панель расширения.",
 "browser_specific_settings": {
 "gecko": {
 "id": "gemini-archive-hider@local.mvp",
 "strict_min_version": "109.0"
 }
+},
+"permissions": [
+"activeTab"
+],
+"action": {
+"default_title": "Архив Gemini",
+"default_popup": "popup.html"
 },
 "content_scripts": [
 {
