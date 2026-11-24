@@ -1,0 +1,91 @@
+{
+"extName": {
+"message": "Gemini Archive Hider"
+},
+"extDescription": {
+"message": "Скрывает архивные чаты [\\A\\] в Google Gemini и позволяет управлять ими через панель расширения."
+},
+"actionTitle": {
+"message": "Архив Gemini"
+},
+"popupTitle": {
+"message": "Архив Gemini"
+},
+"popupHeading": {
+"message": "Архив"
+},
+"refreshList": {
+"message": "Обновить список"
+},
+"searchPlaceholder": {
+"message": "Поиск в архиве"
+},
+"loadingChats": {
+"message": "Загрузка архивных чатов…"
+},
+"chatActions": {
+"message": "Действия с чатом"
+},
+"openChat": {
+"message": "Открыть чат"
+},
+"openInNewTab": {
+"message": "Открыть в новой вкладке"
+},
+"openChatInNewTabTitle": {
+"message": "Открыть чат в новой вкладке"
+},
+"chatUrlUnavailable": {
+"message": "Ссылка на чат недоступна"
+},
+"unarchiveChat": {
+"message": "Деархивировать"
+},
+"noArchivedChats": {
+"message": "Архивных чатов (с префиксом [\\A\\]) на странице не найдено. Если список длинный, прокрутите боковую панель Gemini."
+},
+"noSearchResults": {
+"message": "Ничего не найдено по вашему запросу."
+},
+"errorOpenChat": {
+"message": "Не удалось открыть чат. Попробуйте обновить список."
+},
+"errorNoConnection": {
+"message": "Нет связи со страницей Gemini. Обновите вкладку и повторите попытку."
+},
+"errorNoUrlForNewTab": {
+"message": "Не удалось получить ссылку на этот чат для открытия в новой вкладке."
+},
+"errorOpenNewTab": {
+"message": "Не удалось открыть новую вкладку."
+},
+"statusUnarchiving": {
+"message": "Деархивация чата «$TITLE$»…",
+"placeholders": {
+"title": {
+"content": "$1"
+}
+}
+},
+"errorUnarchiveChat": {
+"message": "Не удалось деархивировать чат. Откройте боковую панель Gemini и повторите попытку."
+},
+"errorNoActiveTab": {
+"message": "Не удалось определить активную вкладку."
+},
+"openGeminiPrompt": {
+"message": "Откройте вкладку gemini.google.com, чтобы увидеть архивные чаты."
+},
+"refreshGeminiPrompt": {
+"message": "Обновите страницу gemini.google.com, чтобы активировать расширение."
+},
+"untitledChat": {
+"message": "Без названия"
+},
+"menuArchive": {
+"message": "Архивировать"
+},
+"archivedChatBadge": {
+"message": "Архивный чат"
+}
+}

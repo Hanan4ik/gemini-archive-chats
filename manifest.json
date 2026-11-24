@@ -1,8 +1,9 @@
 {
 "manifest_version": 3,
-"name": "Gemini Archive Hider",
-"version": "0.2.0",
-"description": "Скрывает архивные чаты [\\A\\] в Google Gemini и позволяет открывать их через панель расширения.",
+"default_locale": "en",
+"name": "__MSG_extName__",
+"version": "0.3.0",
+"description": "__MSG_extDescription__",
 "icons": {
 "48": "icon.jpg",
 "96": "icon.jpg"
@@ -17,7 +18,7 @@
 "activeTab"
 ],
 "action": {
-"default_title": "Архив Gemini",
+"default_title": "__MSG_actionTitle__",
 "default_popup": "popup.html",
 "default_icon": {
 "16": "icon.jpg",

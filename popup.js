@@ -4,12 +4,72 @@
  * - ЛКМ: открыть чат в текущей вкладке
  * - СКМ (средняя кнопка мыши): открыть чат в новой вкладке
  * - ПКМ (правая кнопка мыши): контекстное окно действий (открыть, в новой вкладке, деархивировать)
+ * - Локализацию через browser.i18n
  */
 
 (() => {
   'use strict';
 
   const extApi = typeof browser !== 'undefined' ? browser : chrome;
+
+  /**
+   * Возвращает локализованную строку по ключу из _locales/{lang}/messages.json.
+   * @param {string} key
+   * @param {string | string[]} [substitutions]
+   * @param {string} [fallback='']
+   * @returns {string}
+   */
+  function t(key, substitutions, fallback = '') {
+    try {
+      const msg = extApi?.i18n?.getMessage?.(key, substitutions);
+      if (msg) return msg;
+    } catch (_err) {
+      // Игнорируем ошибку и возвращаем fallback
+    }
+    return fallback || key;
+  }
+
+  /**
+   * Применяет локализацию ко всем статическим элементам popup.html.
+   */
+  function applyLocalization() {
+    try {
+      const uiLang = extApi?.i18n?.getUILanguage?.();
+      if (uiLang) {
+        document.documentElement.lang = uiLang;
+      }
+    } catch (_err) {
+      // Оставляем язык по умолчанию
+    }
+
+    document.querySelectorAll('[data-i18n]').forEach((el) => {
+      const key = el.getAttribute('data-i18n');
+      if (key) {
+        el.textContent = t(key, undefined, el.textContent || '');
+      }
+    });
+
+    document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-title');
+      if (key) {
+        el.setAttribute('title', t(key, undefined, el.getAttribute('title') || ''));
+      }
+    });
+
+    document.querySelectorAll('[data-i18n-placeholder]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      if (key) {
+        el.setAttribute('placeholder', t(key, undefined, el.getAttribute('placeholder') || ''));
+      }
+    });
+
+    document.querySelectorAll('[data-i18n-aria-label]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-aria-label');
+      if (key) {
+        el.setAttribute('aria-label', t(key, undefined, el.getAttribute('aria-label') || ''));
+      }
+    });
+  }
 
   const chatListEl = document.getElementById('chat-list');
   const chatListContainerEl = document.getElementById('chat-list-container');
@@ -91,8 +151,8 @@
     const hasUrl = Boolean(resolveChatUrl(chat));
     ctxOpenNewTabBtn.disabled = !hasUrl;
     ctxOpenNewTabBtn.title = hasUrl
-      ? 'Открыть чат в новой вкладке'
-      : 'Ссылка на чат недоступна';
+      ? t('openChatInNewTabTitle', undefined, 'Open chat in a new tab')
+      : t('chatUrlUnavailable', undefined, 'Chat link is unavailable');
 
     ctxUnarchiveChatBtn.disabled = isUnarchiving;
 
@@ -149,8 +209,12 @@
     if (chats.length === 0) {
       showStatus(
         allArchivedChats.length === 0
-          ? 'Архивных чатов (с префиксом [\\A\\]) на странице не найдено. Если список длинный, прокрутите боковую панель Gemini.'
-          : 'Ничего не найдено по вашему запросу.'
+          ? t(
+              'noArchivedChats',
+              undefined,
+              'No archived chats (with the [\\A\\] prefix) found on this page.'
+            )
+          : t('noSearchResults', undefined, 'No chats match your search.')
       );
       return;
     }
@@ -226,11 +290,17 @@
       if (response && response.ok) {
         window.close();
       } else {
-        showStatus('Не удалось открыть чат. Попробуйте обновить список.');
+        showStatus(t('errorOpenChat', undefined, 'Could not open the chat. Try refreshing the list.'));
       }
     } catch (error) {
       console.error('[Gemini Archive Popup] Ошибка при открытии чата:', error);
-      showStatus('Нет связи со страницей Gemini. Обновите вкладку и повторите попытку.');
+      showStatus(
+        t(
+          'errorNoConnection',
+          undefined,
+          'No connection to the Gemini page. Refresh the tab and try again.'
+        )
+      );
     }
   }
 
@@ -242,7 +312,9 @@
   async function handleOpenChatInNewTab(chat, options = {}) {
     const url = resolveChatUrl(chat);
     if (!url) {
-      showStatus('Не удалось получить ссылку на этот чат для открытия в новой вкладке.');
+      showStatus(
+        t('errorNoUrlForNewTab', undefined, 'Could not get a link to open this chat in a new tab.')
+      );
       return;
     }
 
@@ -255,7 +327,7 @@
       }
     } catch (error) {
       console.error('[Gemini Archive Popup] Ошибка при открытии новой вкладки:', error);
-      showStatus('Не удалось открыть новую вкладку.');
+      showStatus(t('errorOpenNewTab', undefined, 'Could not open a new tab.'));
     }
   }
 
@@ -267,7 +339,9 @@
     if (!activeTabId || isUnarchiving) return;
 
     isUnarchiving = true;
-    showStatus(`Деархивация чата «${chat.displayTitle}»…`);
+    showStatus(
+      t('statusUnarchiving', [chat.displayTitle], `Unarchiving chat “${chat.displayTitle}”…`)
+    );
 
     try {
       const response = await extApi.tabs.sendMessage(activeTabId, {
@@ -289,11 +363,23 @@
           await loadArchivedChats();
         }
       } else {
-        showStatus('Не удалось деархивировать чат. Откройте боковую панель Gemini и повторите попытку.');
+        showStatus(
+          t(
+            'errorUnarchiveChat',
+            undefined,
+            'Could not unarchive the chat. Open the Gemini sidebar and try again.'
+          )
+        );
       }
     } catch (error) {
       console.error('[Gemini Archive Popup] Ошибка при деархивации чата:', error);
-      showStatus('Нет связи со страницей Gemini. Обновите вкладку и повторите попытку.');
+      showStatus(
+        t(
+          'errorNoConnection',
+          undefined,
+          'No connection to the Gemini page. Refresh the tab and try again.'
+        )
+      );
     } finally {
       isUnarchiving = false;
     }
@@ -303,7 +389,7 @@
    * Загружает список архивных чатов из активной вкладки gemini.google.com.
    */
   async function loadArchivedChats() {
-    showStatus('Загрузка архивных чатов…');
+    showStatus(t('loadingChats', undefined, 'Loading archived chats…'));
     countEl.textContent = '0';
     searchBoxEl.hidden = true;
 
@@ -312,7 +398,18 @@
       const activeTab = tabs && tabs[0];
 
       if (!activeTab || !activeTab.id) {
-        showStatus('Не удалось определить активную вкладку.');
+        showStatus(t('errorNoActiveTab', undefined, 'Could not determine the active tab.'));
+        return;
+      }
+
+      if (!activeTab.url || !activeTab.url.startsWith('https://gemini.google.com/')) {
+        showStatus(
+          t(
+            'openGeminiPrompt',
+            undefined,
+            'Open a gemini.google.com tab to view archived chats.'
+          )
+        );
         return;
       }
 
@@ -339,7 +436,13 @@
       applySearchFilter();
     } catch (error) {
       console.error('[Gemini Archive Popup] Ошибка при загрузке чатов:', error);
-      showStatus('Обновите страницу gemini.google.com, чтобы активировать расширение.');
+      showStatus(
+        t(
+          'refreshGeminiPrompt',
+          undefined,
+          'Refresh the gemini.google.com page to activate the extension.'
+        )
+      );
     }
   }
 
@@ -408,5 +511,6 @@
   refreshBtn.addEventListener('click', loadArchivedChats);
   searchInputEl.addEventListener('input', applySearchFilter);
 
+  applyLocalization();
   loadArchivedChats();
 })();

@@ -1,0 +1,91 @@
+{
+"extName": {
+"message": "Gemini Archive Hider"
+},
+"extDescription": {
+"message": "Hides archived chats ([\\A\\]) in Google Gemini and lets you manage them from the extension popup."
+},
+"actionTitle": {
+"message": "Gemini Archive"
+},
+"popupTitle": {
+"message": "Gemini Archive"
+},
+"popupHeading": {
+"message": "Archive"
+},
+"refreshList": {
+"message": "Refresh list"
+},
+"searchPlaceholder": {
+"message": "Search in archive"
+},
+"loadingChats": {
+"message": "Loading archived chats…"
+},
+"chatActions": {
+"message": "Chat actions"
+},
+"openChat": {
+"message": "Open chat"
+},
+"openInNewTab": {
+"message": "Open in new tab"
+},
+"openChatInNewTabTitle": {
+"message": "Open chat in a new tab"
+},
+"chatUrlUnavailable": {
+"message": "Chat link is unavailable"
+},
+"unarchiveChat": {
+"message": "Unarchive"
+},
+"noArchivedChats": {
+"message": "No archived chats (with the [\\A\\] prefix) found on this page. If your list is long, scroll the Gemini sidebar."
+},
+"noSearchResults": {
+"message": "No chats match your search."
+},
+"errorOpenChat": {
+"message": "Could not open the chat. Try refreshing the list."
+},
+"errorNoConnection": {
+"message": "No connection to the Gemini page. Refresh the tab and try again."
+},
+"errorNoUrlForNewTab": {
+"message": "Could not get a link to open this chat in a new tab."
+},
+"errorOpenNewTab": {
+"message": "Could not open a new tab."
+},
+"statusUnarchiving": {
+"message": "Unarchiving chat “$TITLE$”…",
+"placeholders": {
+"title": {
+"content": "$1"
+}
+}
+},
+"errorUnarchiveChat": {
+"message": "Could not unarchive the chat. Open the Gemini sidebar and try again."
+},
+"errorNoActiveTab": {
+"message": "Could not determine the active tab."
+},
+"openGeminiPrompt": {
+"message": "Open a gemini.google.com tab to view archived chats."
+},
+"refreshGeminiPrompt": {
+"message": "Refresh the gemini.google.com page to activate the extension."
+},
+"untitledChat": {
+"message": "Untitled"
+},
+"menuArchive": {
+"message": "Archive"
+},
+"archivedChatBadge": {
+"message": "Archived chat"
+}
+}

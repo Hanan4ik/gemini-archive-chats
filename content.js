@@ -29,6 +29,23 @@
 
   const runtimeApi = typeof browser !== 'undefined' ? browser : chrome;
 
+  /**
+   * Возвращает локализованную строку по ключу из _locales/{lang}/messages.json.
+   * @param {string} key
+   * @param {string | string[]} [substitutions]
+   * @param {string} [fallback='']
+   * @returns {string}
+   */
+  function t(key, substitutions, fallback = '') {
+    try {
+      const msg = runtimeApi?.i18n?.getMessage?.(key, substitutions);
+      if (msg) return msg;
+    } catch (_err) {
+      // Игнорируем ошибку и возвращаем fallback
+    }
+    return fallback || key;
+  }
+
   let archiveIdCounter = 0;
   let lastKnownUrl = window.location.href;
   let manualArchiveSession = null;
@@ -114,7 +131,7 @@
       return trimmed;
     }
     const stripped = trimmed.slice(ARCHIVE_PREFIX.length).trim();
-    return stripped || 'Без названия';
+    return stripped || t('untitledChat', undefined, 'Untitled');
   }
 
   /**
@@ -354,15 +371,16 @@
     }
 
     // Обновляем текст пункта меню
+    const archiveLabelText = ` ${t('menuArchive', undefined, 'Archive')} `;
     const labelEl = btn.querySelector('.gem-menu-item-label');
     if (labelEl) {
-      labelEl.textContent = ' Архивировать ';
+      labelEl.textContent = archiveLabelText;
     } else {
       const textWrap = btn.querySelector('.mat-mdc-menu-item-text');
       if (textWrap) {
         const span = document.createElement('span');
         span.className = 'gds-body-m gem-menu-item-label';
-        span.textContent = ' Архивировать ';
+        span.textContent = archiveLabelText;
         textWrap.appendChild(span);
       }
     }
@@ -720,7 +738,7 @@
       badge = document.createElement('div');
       badge.id = BADGE_ID;
       badge.setAttribute('role', 'status');
-      badge.textContent = 'Архивный чат';
+      badge.textContent = t('archivedChatBadge', undefined, 'Archived chat');
       Object.assign(badge.style, {
         position: 'fixed',
         zIndex: '2147483640',
