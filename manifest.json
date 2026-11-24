@@ -11,7 +11,8 @@
 "browser_specific_settings": {
 "gecko": {
 "id": "gemini-archive-hider@local.mvp",
-"strict_min_version": "109.0"
+"strict_min_version": "109.0",
+"data_collection_permissions": null
 }
 },
 "permissions": [
