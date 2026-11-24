@@ -1,9 +1,9 @@
 /**
- * Скрипт выпадающей панели (popup) для просмотра и открытия архивных чатов Gemini.
+ * Скрипт выпадающей панели (popup) для просмотра и управления архивными чатами Gemini.
  * Поддерживает:
  * - ЛКМ: открыть чат в текущей вкладке
  * - СКМ (средняя кнопка мыши): открыть чат в новой вкладке
- * - ПКМ (правая кнопка мыши): контекстное окно действий
+ * - ПКМ (правая кнопка мыши): контекстное окно действий (открыть, в новой вкладке, деархивировать)
  */
 
 (() => {
@@ -23,12 +23,14 @@
   const contextMenuTitleEl = document.getElementById('context-menu-title');
   const ctxOpenChatBtn = document.getElementById('ctx-open-chat');
   const ctxOpenNewTabBtn = document.getElementById('ctx-open-new-tab');
+  const ctxUnarchiveChatBtn = document.getElementById('ctx-unarchive-chat');
 
   let activeTabId = null;
   let activeTabOrigin = 'https://gemini.google.com';
   let allArchivedChats = [];
   let contextMenuChat = null;
   let contextActiveBtn = null;
+  let isUnarchiving = false;
 
   /**
    * Показывает текстовое состояние (загрузка, пусто, ошибка) и скрывает список.
@@ -91,6 +93,8 @@
     ctxOpenNewTabBtn.title = hasUrl
       ? 'Открыть чат в новой вкладке'
       : 'Ссылка на чат недоступна';
+
+    ctxUnarchiveChatBtn.disabled = isUnarchiving;
 
     // Показываем меню, чтобы измерить его размеры и корректно вписать в окно
     contextMenuEl.style.left = '0px';
@@ -256,6 +260,46 @@
   }
 
   /**
+   * Отправляет контент-скрипту команду деархивировать выбранный чат (убрать префикс [\A\]).
+   * @param {{id: string, title: string, displayTitle: string, href: string | null}} chat
+   */
+  async function handleUnarchiveChat(chat) {
+    if (!activeTabId || isUnarchiving) return;
+
+    isUnarchiving = true;
+    showStatus(`Деархивация чата «${chat.displayTitle}»…`);
+
+    try {
+      const response = await extApi.tabs.sendMessage(activeTabId, {
+        type: 'UNARCHIVE_CHAT',
+        payload: {
+          id: chat.id,
+          title: chat.title,
+          href: chat.href,
+        },
+      });
+
+      if (response && response.ok) {
+        if (Array.isArray(response.chats)) {
+          allArchivedChats = response.chats;
+          countEl.textContent = String(allArchivedChats.length);
+          searchBoxEl.hidden = allArchivedChats.length === 0;
+          applySearchFilter();
+        } else {
+          await loadArchivedChats();
+        }
+      } else {
+        showStatus('Не удалось деархивировать чат. Откройте боковую панель Gemini и повторите попытку.');
+      }
+    } catch (error) {
+      console.error('[Gemini Archive Popup] Ошибка при деархивации чата:', error);
+      showStatus('Нет связи со страницей Gemini. Обновите вкладку и повторите попытку.');
+    } finally {
+      isUnarchiving = false;
+    }
+  }
+
+  /**
    * Загружает список архивных чатов из активной вкладки gemini.google.com.
    */
   async function loadArchivedChats() {
@@ -329,6 +373,14 @@
     closeContextMenu();
     if (chat) {
       handleOpenChatInNewTab(chat, { active: true });
+    }
+  });
+
+  ctxUnarchiveChatBtn.addEventListener('click', () => {
+    const chat = contextMenuChat;
+    closeContextMenu();
+    if (chat) {
+      handleUnarchiveChat(chat);
     }
   });
 
